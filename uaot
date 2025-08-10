@@ -11,7 +11,7 @@ local Plr = Players.LocalPlayer
 local PlayerGui = Plr:WaitForChild("PlayerGui")
 
 -- External script URL (auto executed on teleport/rejoin)
-local scriptURL = "https://raw.githubusercontent.com/sudaisontopxd/UAOT/refs/heads/main/PhantomFlux"
+local scriptURL = "https://raw.githubusercontent.com/sudaisontopxd/UAOT2/refs/heads/main/uaot"
 
 -- Queue external script to auto-execute on teleport/rejoin
 queue_on_teleport([[
