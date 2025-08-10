@@ -1,0 +1,357 @@
+-- Services
+local TeleportService = game:GetService("TeleportService")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+local TweenService = game:GetService("TweenService")
+local Lighting = game:GetService("Lighting")
+local HttpService = game:GetService("HttpService")
+
+local Plr = Players.LocalPlayer
+local PlayerGui = Plr:WaitForChild("PlayerGui")
+
+-- External script URL (auto executed on teleport/rejoin)
+local scriptURL = "https://raw.githubusercontent.com/sudaisontopxd/UAOT/refs/heads/main/PhantomFlux"
+
+-- Queue external script to auto-execute on teleport/rejoin
+queue_on_teleport([[
+    loadstring(game:HttpGet("]] .. scriptURL .. [["))()
+]])
+
+-- Variables (Your original variables unchanged)
+local DamageEvent = ReplicatedStorage:WaitForChild("DamageEvent")
+local CutLimbsEvent = ReplicatedStorage:WaitForChild("CutLimbsEvent")
+local Entities = Workspace:WaitForChild("Entities")
+local Titans = Entities:WaitForChild("Titans")
+local killKey = "&@&*&@&"
+
+local autoKillTitans = false
+local killAuraEnabled = false
+local detitanizeEnabled = false
+local tweenSpeed = 2
+
+-- Function to count alive Titans (used for auto rejoin and GUI)
+local function getAliveTitanCount()
+    local count = 0
+    for _, titan in pairs(Titans:GetChildren()) do
+        local hum = titan:FindFirstChild("Humanoid")
+        if hum and hum.Health > 0 then
+            count = count + 1
+        end
+    end
+    return count
+end
+
+-- Infinite Yield style teleport with retry
+local function teleportToServer()
+    local success, err = pcall(function()
+        TeleportService:Teleport(game.PlaceId, Plr)
+    end)
+    if not success then
+        warn("Teleport failed, retrying in 5 seconds: " .. tostring(err))
+        task.wait(5)
+        teleportToServer()
+    end
+end
+
+-- Auto rejoin loop if no Titans alive
+task.spawn(function()
+    while task.wait(1) do
+        local titanCount = getAliveTitanCount()
+        if titanCount == 0 then
+            print("No titans left, rejoining...")
+            teleportToServer()
+            break
+        end
+    end
+end)
+
+-- --- Your existing functions (untouched) ---
+local function IsNear(part)
+    local hrp = Plr.Character and Plr.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp or not part then return false end
+    local range = 200
+    for _, titan in ipairs(Titans:GetChildren()) do
+        if string.lower(titan.Name):find("colossal") then
+            range = 9e9
+            break
+        end
+    end
+    return (part.Position - hrp.Position).Magnitude <= range
+end
+
+for _, titan in ipairs(Titans:GetChildren()) do
+    if string.lower(titan.Name):find("female") then
+        tweenSpeed = 5
+        break
+    end
+end
+
+local function tweenToPosition(cf)
+    local hrp = Plr.Character and Plr.Character:FindFirstChild("HumanoidRootPart")
+    if hrp then
+        local tween = TweenService:Create(hrp, TweenInfo.new(tweenSpeed), {CFrame = cf})
+        tween:Play()
+        tween.Completed:Wait()
+    end
+end
+
+local function getNearestEnemy(folder)
+    local hrp = Plr.Character and Plr.Character:FindFirstChild("HumanoidRootPart")
+    local nearest, shortest = nil, math.huge
+    for _, enemy in pairs(folder:GetChildren()) do
+        local humanoid = enemy:FindFirstChildOfClass("Humanoid")
+        local part = enemy.PrimaryPart or enemy:FindFirstChildWhichIsA("BasePart")
+        if humanoid and humanoid.Health > 0 and part and not part.Anchored then
+            local dist = (hrp.Position - part.Position).Magnitude
+            if dist < shortest then
+                shortest = dist
+                nearest = {model = enemy, humanoid = humanoid, part = part}
+            end
+        end
+    end
+    return nearest
+end
+
+-- --- Combat loops without Marleyans ---
+task.spawn(function()
+    while task.wait(0.1) do
+        if killAuraEnabled then
+            for _, titan in ipairs(Titans:GetChildren()) do
+                local hum = titan:FindFirstChild("Humanoid")
+                local nape = titan:FindFirstChild("NapeHitbox")
+                if hum and nape and hum.Health > 0 and IsNear(nape) then
+                    DamageEvent:FireServer(nil, hum, killKey, titan)
+                end
+            end
+        end
+    end
+end)
+
+task.spawn(function()
+    while task.wait(0.1) do
+        if detitanizeEnabled then
+            for _, titan in ipairs(Titans:GetChildren()) do
+                local hum = titan:FindFirstChild("Humanoid")
+                local nape = titan:FindFirstChild("NapeHitbox")
+                if hum and hum.Health > 0 and nape and IsNear(nape) then
+                    CutLimbsEvent:FireServer("Left Arm", titan, killKey)
+                    CutLimbsEvent:FireServer("Right Arm", titan, killKey, "Right Shoulder")
+                    CutLimbsEvent:FireServer("Left Arm", titan, killKey, "Left Shoulder")
+                    DamageEvent:FireServer("Blind", hum, killKey, titan)
+                end
+            end
+        end
+    end
+end)
+
+task.spawn(function()
+    while task.wait(0.1) do
+        if autoKillTitans then
+            local target = getNearestEnemy(Titans)
+            if target then
+                local hrp = Plr.Character and Plr.Character:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    local distance = target.distance or 0
+                    local tspeed = 3
+                    if distance >= 0 and distance <= 1000 then
+                        tspeed = 2
+                    elseif distance > 1000 then
+                        tspeed = 7
+                    end
+                    local tween = TweenService:Create(hrp, TweenInfo.new(tspeed), {
+                        CFrame = target.part.CFrame + Vector3.new(0, 2, 0)
+                    })
+                    tween:Play()
+                    tween.Completed:Wait()
+                    for _ = 1, 50 do
+                        DamageEvent:FireServer(nil, target.humanoid, killKey, target.model)
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- ==================
+-- PhantomFlux-style GUI
+-- ==================
+local function createPhantomFluxGUI()
+    -- Remove old GUI if present
+    local oldGui = PlayerGui:FindFirstChild("PhantomFluxAFKGrind")
+    if oldGui then oldGui:Destroy() end
+
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "PhantomFluxAFKGrind"
+    gui.ResetOnSpawn = false
+    gui.IgnoreGuiInset = true
+    gui.ZIndexBehavior = Enum.ZIndexBehavior.Global
+    gui.Parent = PlayerGui
+
+    local blur = Instance.new("BlurEffect")
+    blur.Size = 15
+    blur.Parent = Lighting
+
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 360, 0, 280)
+    frame.Position = UDim2.new(0.5, 0, 0.5, 0)
+    frame.AnchorPoint = Vector2.new(0.5, 0.5)
+    frame.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+    frame.BackgroundTransparency = 0.1
+    frame.Parent = gui
+    frame.ClipsDescendants = true
+
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 14)
+    local gradient = Instance.new("UIGradient", frame)
+    gradient.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(60, 60, 90)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(30, 30, 50))
+    }
+
+    local title = Instance.new("TextLabel", frame)
+    title.Size = UDim2.new(1, 0, 0, 36)
+    title.Position = UDim2.new(0, 0, 0, 10)
+    title.BackgroundTransparency = 1
+    title.Text = "PhantomFlux AFK Grind"
+    title.Font = Enum.Font.GothamBold
+    title.TextColor3 = Color3.fromRGB(220, 220, 255)
+    title.TextScaled = true
+
+    local titanCountLabel = Instance.new("TextLabel", frame)
+    titanCountLabel.Size = UDim2.new(1, -20, 0, 28)
+    titanCountLabel.Position = UDim2.new(0, 10, 0, 60)
+    titanCountLabel.BackgroundTransparency = 1
+    titanCountLabel.TextColor3 = Color3.fromRGB(180, 180, 230)
+    titanCountLabel.Font = Enum.Font.GothamBold
+    titanCountLabel.TextScaled = true
+    titanCountLabel.Text = "Titans Left: 0"
+
+    -- Update titan count label every second
+    task.spawn(function()
+        while gui.Parent do
+            local aliveCount = getAliveTitanCount()
+            titanCountLabel.Text = "Titans Left: "..tostring(aliveCount)
+            task.wait(1)
+        end
+    end)
+
+    local function createToggle(text, position, defaultState, callback)
+        local container = Instance.new("Frame", frame)
+        container.Size = UDim2.new(1, -20, 0, 40)
+        container.Position = position
+        container.BackgroundTransparency = 1
+
+        local label = Instance.new("TextLabel", container)
+        label.Size = UDim2.new(0.65, 0, 1, 0)
+        label.BackgroundTransparency = 1
+        label.Text = text
+        label.Font = Enum.Font.GothamBold
+        label.TextColor3 = Color3.fromRGB(220, 220, 255)
+        label.TextScaled = true
+        label.TextXAlignment = Enum.TextXAlignment.Left
+
+        local toggleBtn = Instance.new("TextButton", container)
+        toggleBtn.Size = UDim2.new(0.3, 0, 0.7, 0)
+        toggleBtn.Position = UDim2.new(0.7, 0, 0.15, 0)
+        toggleBtn.BackgroundColor3 = defaultState and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(170, 0, 0)
+        toggleBtn.TextColor3 = Color3.new(1, 1, 1)
+        toggleBtn.Font = Enum.Font.GothamBold
+        toggleBtn.TextScaled = true
+        toggleBtn.Text = defaultState and "ON" or "OFF"
+        toggleBtn.AutoButtonColor = false
+
+        local function updateToggle(state)
+            toggleBtn.BackgroundColor3 = state and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(170, 0, 0)
+            toggleBtn.Text = state and "ON" or "OFF"
+        end
+
+        toggleBtn.MouseButton1Click:Connect(function()
+            local newState = not (toggleBtn.Text == "ON")
+            updateToggle(newState)
+            callback(newState)
+        end)
+
+        return toggleBtn, updateToggle
+    end
+
+    local killAuraToggle, setKillAuraToggle = createToggle("Kill Aura", UDim2.new(0, 10, 0, 100), killAuraEnabled, function(state)
+        killAuraEnabled = state
+    end)
+
+    local autoKillTitansToggle, setAutoKillTitansToggle = createToggle("Auto Kill Titans", UDim2.new(0, 10, 0, 150), autoKillTitans, function(state)
+        autoKillTitans = state
+    end)
+
+    local detitanizeToggle, setDetitanizeToggle = createToggle("Detitanize", UDim2.new(0, 10, 0, 200), detitanizeEnabled, function(state)
+        detitanizeEnabled = state
+    end)
+
+    local function animateButton(btn)
+        local origSize = btn.Size
+        btn.MouseEnter:Connect(function()
+            TweenService:Create(btn, TweenInfo.new(0.2, Enum.EasingStyle.Bounce), {Size = origSize + UDim2.new(0.05, 0, 0.05, 0)}):Play()
+        end)
+        btn.MouseLeave:Connect(function()
+            TweenService:Create(btn, TweenInfo.new(0.2, Enum.EasingStyle.Bounce), {Size = origSize}):Play()
+        end)
+    end
+
+    animateButton(killAuraToggle)
+    animateButton(autoKillTitansToggle)
+    animateButton(detitanizeToggle)
+
+    local function cycleTextColor(obj)
+        spawn(function()
+            while obj and obj.Parent do
+                TweenService:Create(obj, TweenInfo.new(2), {TextColor3 = Color3.fromHSV(tick() % 5 / 5, 1, 1)}):Play()
+                wait(2)
+            end
+        end)
+    end
+
+    cycleTextColor(title)
+    cycleTextColor(titanCountLabel)
+
+    TweenService:Create(frame, TweenInfo.new(0.4), {BackgroundTransparency = 0.05}):Play()
+    TweenService:Create(blur, TweenInfo.new(0.4), {Size = 12}):Play()
+
+    return {
+        gui = gui,
+        setKillAuraToggle = setKillAuraToggle,
+        setAutoKillTitansToggle = setAutoKillTitansToggle,
+    }
+end
+
+-- Create GUI and get toggle setters
+local phantomFluxUI = createPhantomFluxGUI()
+
+-- Auto enable Kill Aura and Auto Kill Titans on script load
+killAuraEnabled = true
+autoKillTitans = true
+phantomFluxUI.setKillAuraToggle(true)
+phantomFluxUI.setAutoKillTitansToggle(true)
+
+-- Auto enable toggles on character respawn
+local function OnCharacterAdded(character)
+    local hrp = character:WaitForChild("HumanoidRootPart", 10)
+    if not hrp then return end
+
+    killAuraEnabled = true
+    autoKillTitans = true
+
+    phantomFluxUI.setKillAuraToggle(true)
+    phantomFluxUI.setAutoKillTitansToggle(true)
+end
+
+Plr.CharacterAdded:Connect(OnCharacterAdded)
+if Plr.Character then
+    OnCharacterAdded(Plr.Character)
+end
+
+-- Load external script immediately this session
+local success, err = pcall(function()
+    loadstring(game:HttpGet(scriptURL, true))()
+end)
+if not success then
+    warn("Failed to load external script:", err)
+end
