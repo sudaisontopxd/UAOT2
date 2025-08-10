@@ -10,14 +10,6 @@ local HttpService = game:GetService("HttpService")
 local Plr = Players.LocalPlayer
 local PlayerGui = Plr:WaitForChild("PlayerGui")
 
--- External script URL (auto executed on teleport/rejoin)
-local scriptURL = "https://raw.githubusercontent.com/sudaisontopxd/UAOT2/refs/heads/main/uaot"
-
--- Queue external script to auto-execute on teleport/rejoin
-queue_on_teleport([[
-    loadstring(game:HttpGet("]] .. scriptURL .. [["))()
-]])
-
 -- Variables (Your original variables unchanged)
 local DamageEvent = ReplicatedStorage:WaitForChild("DamageEvent")
 local CutLimbsEvent = ReplicatedStorage:WaitForChild("CutLimbsEvent")
@@ -346,12 +338,4 @@ end
 Plr.CharacterAdded:Connect(OnCharacterAdded)
 if Plr.Character then
     OnCharacterAdded(Plr.Character)
-end
-
--- Load external script immediately this session
-local success, err = pcall(function()
-    loadstring(game:HttpGet(scriptURL, true))()
-end)
-if not success then
-    warn("Failed to load external script:", err)
 end
